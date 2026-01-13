@@ -10,12 +10,22 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Conexión a MongoDB
-mongoose.connect(process.env.MONGO_URL)
-    .then(() => console.log("✅ Conectado a MongoDB en Railway"))
-    .catch(err => console.error("❌ Error de conexión:", err));
+const iniciarServidor = async () => {
+    try {
+        await mongoose.connect(process.env.MONGO_URL);
+        console.log("✅ Conectado a MongoDB");
 
-// Esquema de la base de datos
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server en puerto ${PORT}`);
+        });
+    } catch (err) {
+        console.error("❌ Error crítico de inicio:", err);
+        process.exit(1); // Detiene la app si no hay DB
+    }
+};
+
+iniciarServidor();
+
 const ElementoSchema = new mongoose.Schema({
     nombre: String,
     precio: Number,
@@ -24,7 +34,6 @@ const ElementoSchema = new mongoose.Schema({
 });
 const Elemento = mongoose.model('Elemento', ElementoSchema);
 
-// Configuración Cloudinary
 cloudinary.config({
     cloud_name: process.env.CLOUD_NAME,
     api_key: process.env.CLOUD_API_KEY,
@@ -33,7 +42,6 @@ cloudinary.config({
 
 const upload = multer({ dest: 'uploads/' });
 
-// RUTAS API
 app.get('/api/elementos', async (req, res) => {
     const items = await Elemento.find();
     res.json(items);
@@ -55,13 +63,27 @@ app.post('/api/subir', upload.single('archivo'), async (req, res) => {
 
 app.put('/api/elementos', async (req, res) => {
     try {
-        // Esta ruta sincroniza los cambios que hagas en el panel de Admin
         for (const item of req.body) {
-            await Elemento.findByIdAndUpdate(item._id || new mongoose.Types.ObjectId(), item, { upsert: true });
+            const id = item._id || new mongoose.Types.ObjectId();
+            delete item._id; // Limpiamos el id para evitar conflictos en el update
+            await Elemento.findByIdAndUpdate(id, item, { upsert: true });
         }
         res.json({ status: "ok" });
     } catch (e) { res.status(500).json(e); }
 });
 
+// RUTA PARA ELIMINAR UN PRODUCTO POR ID
+app.delete('/api/elementos/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        await Elemento.findByIdAndDelete(id);
+        res.json({ status: "eliminado", id });
+    } catch (e) {
+        console.error("Error al eliminar:", e);
+        res.status(500).json({ error: "No se pudo eliminar" });
+    }
+});
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server en puerto ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+console.log(`🚀 Server en puerto ${PORT}`);
+});
